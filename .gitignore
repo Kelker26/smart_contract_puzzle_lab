@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+
+# Logs
+*.log
+
+# Backups
+backups/
+
+# Environment variables / Secrets
+*.env
+
+# Bot data
+user_data.json

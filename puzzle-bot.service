@@ -1,0 +1,15 @@
+[Unit]
+Description=Smart Contract Puzzle Bot
+After=network.target
+
+[Service]
+Type=simple
+User=kelker
+WorkingDirectory=/home/kelker/smart_contract_puzzle_lab
+Environment="PATH=/home/kelker/smart_contract_puzzle_lab/venv/bin"
+ExecStart=/home/kelker/smart_contract_puzzle_lab/venv/bin/python -m bot.main
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
