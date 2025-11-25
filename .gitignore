@@ -1,19 +1,9 @@
-# Python
+venv/
 __pycache__/
 *.pyc
-
-# Virtual environment
-venv/
-.venv/
-
-# Logs
-*.log
-
-# Backups
-backups/
-
-# Environment variables / Secrets
-*.env
-
-# Bot data
+.env
 user_data.json
+bot.log
+backups/
+nohup.out
+*.json
