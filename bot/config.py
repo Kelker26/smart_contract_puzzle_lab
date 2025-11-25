@@ -6,7 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Telegram Bot Token - Get from @BotFather on Telegram
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_BOT_TOKEN_HERE")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+if not TELEGRAM_TOKEN:
+    raise ValueError("Environment variable TELEGRAM_TOKEN not found.")
+
 
 # Award Configuration - Future: Could include wallet addresses for token/NFT rewards
 AWARD_CONFIG = {
