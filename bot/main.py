@@ -1,9 +1,13 @@
 # bot/main.py
 import logging
 from telegram.ext import ApplicationBuilder
-from bot.config import TELEGRAM_TOKEN
+#from bot.config import TELEGRAM_TOKEN
 from bot.handlers import register_handlers, PUZZLES
 from bot.storage import initialize_puzzle_data
+import os
+
+TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
+
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
