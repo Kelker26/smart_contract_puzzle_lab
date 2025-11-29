@@ -1,0 +1,44 @@
+name: CI Checks
+
+# Run ONLY on pushes to main
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "**/*.py"
+      - "pyproject.toml"
+      - "requirements.txt"
+      - "constraints.txt"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies with constraints
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f constraints.txt ]; then
+          pip install -r requirements.txt -c constraints.txt
+        else
+          pip install -r requirements.txt
+        fi
+
+    - name: Basic Python syntax check
+      run: python -m py_compile $(git ls-files "*.py")
+
+    - name: Import test (ensures bot modules load)
+      run: python - << 'EOF'
+from bot.storage import initialize_puzzle_data
+from bot.handlers import PUZZLES
+print(f"Imported successfully. Puzzles: {len(PUZZLES)}")
+EOF
+
