@@ -1093,9 +1093,9 @@ def register_handlers(application):
     logger.info("Registered text message handler")
 
     # Admin command handlers
-    app.add_handler(CommandHandler("stats", cmd_stats))
-    app.add_handler(CommandHandler("dumpdata", cmd_dump))
-    app.add_handler(CommandHandler("userstats", cmd_user))
+    application.add_handler(CommandHandler("stats", cmd_stats))
+    application.add_handler(CommandHandler("dumpdata", cmd_dump))
+    application.add_handler(CommandHandler("userstats", cmd_user))
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
