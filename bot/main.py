@@ -1,4 +1,3 @@
-# bot/main.py
 import logging
 from telegram.ext import ApplicationBuilder
 from bot.config import TELEGRAM_TOKEN

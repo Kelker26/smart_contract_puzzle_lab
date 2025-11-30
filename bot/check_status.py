@@ -1,4 +1,3 @@
-# Add this to a new file: check_stats.py
 from bot.storage import get_stats, load_data
 
 # Get overall stats

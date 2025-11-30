@@ -1,8 +1,8 @@
 import logging
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from bot.admin import cmd_stats, cmd_dump, cmd_user
-from bot.admin import cmd_admin_stats
+from bot.admin import cmd_admin_stats, cmd_dump, cmd_user
+
 
 from telegram.ext import (
     ContextTypes,
@@ -1094,10 +1094,9 @@ def register_handlers(application):
     logger.info("Registered text message handler")
 
     # Admin command handlers
-    application.add_handler(CommandHandler("stats", cmd_stats))
+    application.add_handler(CommandHandler("stats", cmd_admin_stats))
     application.add_handler(CommandHandler("dumpdata", cmd_dump))
     application.add_handler(CommandHandler("userstats", cmd_user))
-    application.add_handler(CommandHandler("stats", cmd_admin_stats))
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
