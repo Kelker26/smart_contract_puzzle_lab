@@ -2,17 +2,16 @@ import json
 import os
 import random
 
-DATA_FILE = "user_data.json"
+# Use persistent path if set in environment (Railway volume)
+DATA_DIR = os.getenv("USER_DATA_PATH", ".")  # Defaults to project root if not set
+USER_DATA_FILE = os.path.join(DATA_DIR, "user_data.json")
 
 # Points per puzzle (dynamically determined by puzzle difficulty)
 PUZZLE_POINTS = {}
-
-# Map puzzle -> difficulty
 PUZZLE_DIFFICULTY = {}
 
 # Dynamically populate from handlers.PUZZLES when imported
 def initialize_puzzle_data(puzzles_dict):
-    """Initialize puzzle points and difficulty mappings from the PUZZLES dict."""
     global PUZZLE_POINTS, PUZZLE_DIFFICULTY
     for puzzle_id, puzzle_data in puzzles_dict.items():
         PUZZLE_POINTS[puzzle_id] = puzzle_data.get("points", 10)
@@ -20,25 +19,22 @@ def initialize_puzzle_data(puzzles_dict):
 
 
 def load_data():
-    """Load user data from disk. Return {} if missing or malformed."""
-    if not os.path.exists(DATA_FILE):
+    if not os.path.exists(USER_DATA_FILE):
         return {}
     try:
-        with open(DATA_FILE, "r") as f:
+        with open(USER_DATA_FILE, "r") as f:
             data = json.load(f)
-            if not isinstance(data, dict):
-                return {}
-            return data
+            return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, IOError):
         return {}
 
 
 def save_data(data):
-    """Persist user data to disk."""
-    with open(DATA_FILE, "w") as f:
+    os.makedirs(DATA_DIR, exist_ok=True)  
+    with open(USER_DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-
+# ensure_user_entry, set_username, mark_puzzle_solved, etc.
 def ensure_user_entry(data, uid):
     """Ensure structure for a user id string exists; returns the user dict."""
     if uid not in data or not isinstance(data[uid], dict):
