@@ -2,36 +2,52 @@ import logging
 from telegram.ext import ApplicationBuilder
 from bot.config import TELEGRAM_TOKEN
 from bot.handlers import register_handlers, PUZZLES
-from bot.storage import initialize_puzzle_data
+from bot.database import init_database
 
-
+# Configure logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
 )
-
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
 logger = logging.getLogger(__name__)
 
 def main():
     """Initialize and run the Telegram bot."""
-    # Initialize puzzle data in storage module
-    initialize_puzzle_data(PUZZLES)
-    logger.info(f"Initialized {len(PUZZLES)} puzzles")
-    
-    # Build application
+
+    # ----------------------------------------------------
+    # 1. Initialize PostgreSQL database
+    # ----------------------------------------------------
+    try:
+        init_database()
+        logger.info("✅ PostgreSQL database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        logger.info("⚠ Bot will continue running, but DB operations may fail")
+
+    # ----------------------------------------------------
+    # 2. Initialize puzzle list (still needed by handlers)
+    # ----------------------------------------------------
+    logger.info(f"Loaded {len(PUZZLES)} puzzles")
+
+    # ----------------------------------------------------
+    # 3. Build the Telegram bot application
+    # ----------------------------------------------------
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    
-    # Register all handlers
+
+    # ----------------------------------------------------
+    # 4. Register all bot command/message handlers
+    # ----------------------------------------------------
     register_handlers(app)
     logger.info("All handlers registered successfully")
-    
-    # Start bot
-    logger.info("🤖 Smart Contract Puzzle Bot is starting...")
-    logger.info("Press Ctrl+C to stop")
-    
+
+    # ----------------------------------------------------
+    # 5. Start the bot
+    # ----------------------------------------------------
+    logger.info("🤖 Smart Contract Puzzle Bot is now running...")
+    logger.info("Press Ctrl+C to stop the bot")
+
     app.run_polling()
 
 if __name__ == "__main__":
     main()
+

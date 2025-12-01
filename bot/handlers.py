@@ -12,7 +12,7 @@ from telegram.ext import (
     filters,
 )
 
-from bot.storage import (
+from bot.db_storage import (  # Changed from bot.storage
     set_username,
     get_username,
     mark_puzzle_solved,
@@ -26,7 +26,6 @@ from bot.storage import (
     is_puzzle_solved,
     record_award,
     get_user_awards,
-    # get_wrong_answer_count,   <-- removed (not present in storage)
     get_perfect_solve_count,
     is_award_earned,
     add_bonus_points,
