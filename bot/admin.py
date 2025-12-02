@@ -2,80 +2,81 @@ import os
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ContextTypes
-from bot.storage import load_data
+from bot.db_storage import (
+    get_stats,
+    get_user_data,
+    get_username,
+    get_user_progress,
+    get_user_awards,
+)
 
-# Load environment variables
 load_dotenv()
-ADMIN_ID = int(os.getenv("ADMIN_ID", 0))  # Default to 0 if not set
+ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
+
 
 async def cmd_admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin-only command to show full stats."""
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ You are not authorized to use this command.")
+        await update.message.reply_text("❌ You are not authorized.")
         return
 
-    from bot.storage import get_stats
-
     stats = get_stats()
-    data = load_data()
 
-    message = f"📈 Overall Stats:\n"
-    message += f"   Total Users: {stats['total_users']}\n"
-    message += f"   Total Solves: {stats['total_solves']}\n"
-    message += f"   Most Popular: {stats['most_solved_puzzle']} ({stats['most_solved_count']} solves)\n\n"
-
-    message += "👥 User Breakdown:\n"
-    for user_id, user_data in data.items():
-        message += f"   {user_data.get('name', 'Unknown')}:\n"
-        message += f"      Score: {user_data.get('score', 0)} | "
-        message += f"Solved: {len(user_data.get('solved', []))} | "
-        message += f"Stage: {user_data.get('stage', 0)} | "
-        message += f"Awards: {len(user_data.get('awards', []))}\n"
+    message = (
+        "📈 Overall Stats:\n"
+        f"Total Users: {stats['total_users']}\n"
+        f"Total Solves: {stats['total_solves']}\n"
+        f"Most Solved Puzzle: {stats['most_solved_puzzle']} ({stats['most_solved_count']} solves)"
+    )
 
     await update.message.reply_text(message)
 
 
-async def cmd_dump(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin-only command to dump raw user data."""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ You are not authorized to use this command.")
-        return
-
-    data = load_data()
-    message = "Raw user data:\n"
-    for user_id, user_info in data.items():
-        message += f"{user_id}: {user_info}\n"
-
-    # Telegram has message length limits, so split if necessary
-    for chunk in [message[i:i+4000] for i in range(0, len(message), 4000)]:
-        await update.message.reply_text(f"```\n{chunk}\n```", parse_mode="Markdown")
-
-
 async def cmd_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin-only command to get stats for a specific user.
-       Usage: /userstats <username>"""
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ You are not authorized to use this command.")
+        await update.message.reply_text("❌ You are not authorized.")
         return
 
-    if not context.args:
-        await update.message.reply_text("❌ Please provide a username. Usage: /userstats <username>")
+    if len(context.args) < 1:
+        await update.message.reply_text("Usage: /userstats <telegram_id>")
         return
 
-    username = context.args[0]
-    data = load_data()
+    telegram_id = int(context.args[0])
+    user_data = get_user_data(telegram_id)
 
-    for user_id, user_data in data.items():
-        if user_data.get("name") == username:
-            message = f"Stats for {username}:\n"
-            message += f"Score: {user_data.get('score', 0)}\n"
-            message += f"Solved: {len(user_data.get('solved', []))}\n"
-            message += f"Stage: {user_data.get('stage', 0)}\n"
-            message += f"Awards: {len(user_data.get('awards', []))}\n"
-            await update.message.reply_text(message)
-            return
+    if not user_data:
+        await update.message.reply_text("❌ User not found.")
+        return
 
-    await update.message.reply_text(f"❌ User {username} not found.")
+    solved, score, diff_scores, username = get_user_progress(telegram_id)
+    awards = get_user_awards(telegram_id)
+
+    msg = (
+        f"👤 User: {username} (ID: {telegram_id})\n"
+        f"Score: {score}\n"
+        f"Solved Puzzles: {', '.join(solved)}\n"
+        f"Awards: {', '.join(awards)}\n"
+        "Difficulty Breakdown:\n"
+        + "\n".join(f"  {d}: {p}" for d, p in diff_scores.items())
+    )
+
+    await update.message.reply_text(msg)
+
+
+async def cmd_dump(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ You are not authorized.")
+        return
+
+    users = get_user_data()
+    msg = "🗂 All User Data:\n"
+
+    for uid, user in users.items():
+        msg += f"{user.get('username', 'Unknown')} (ID:{uid}) Score={user.get('score', 0)}\n"
+
+    for chunk in [msg[i:i+4000] for i in range(0, len(msg), 4000)]:
+        await update.message.reply_text(chunk)
+
+
 
 
 
