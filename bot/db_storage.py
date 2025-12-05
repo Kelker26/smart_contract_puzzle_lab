@@ -1,53 +1,70 @@
-"""Database storage implementation - replaces JSON file storage."""
 import os
+from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from bot.database import get_connection
-from datetime import datetime
 
-# Detect migration mode
 MIGRATION_MODE = os.getenv("MIGRATION_MODE") == "1"
 
 
 def safe_import_handlers():
-    """Import puzzle handlers, but skip during migration."""
     if MIGRATION_MODE:
         return {}, {}
     try:
         from bot.handlers import PUZZLES, PUZZLES_BY_DIFFICULTY
         return PUZZLES, PUZZLES_BY_DIFFICULTY
-    except ImportError:
+    except:
         return {}, {}
 
 
-def set_username(user_id, username):
-    conn = get_connection()
-    cur = conn.cursor()
+# ---------- SAFE DB WRAPPER ----------
 
-    cur.execute("""
+def safe_query(query, params=None, fetchone=False, fetchall=False):
+    conn = get_connection()
+    if conn is None:
+        return None
+
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(query, params or ())
+
+        result = None
+        if fetchone:
+            result = cur.fetchone()
+        elif fetchall:
+            result = cur.fetchall()
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        return result
+
+    except psycopg2.Error as e:
+        print(f"⚠ DB Error: {e}")
+        return None
+
+
+# ---------- USERNAME ----------
+
+def set_username(user_id, username):
+    safe_query("""
         INSERT INTO users (telegram_id, username)
         VALUES (%s, %s)
-        ON CONFLICT (telegram_id) 
+        ON CONFLICT (telegram_id)
         DO UPDATE SET username = EXCLUDED.username
     """, (user_id, username))
 
-    conn.commit()
-    cur.close()
-    conn.close()
-
 
 def get_username(user_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
+    row = safe_query(
+        "SELECT username FROM users WHERE telegram_id = %s",
+        (user_id,),
+        fetchone=True
+    )
+    return row['username'] if row else None
 
-    cur.execute("SELECT username FROM users WHERE telegram_id = %s", (user_id,))
-    result = cur.fetchone()
 
-    cur.close()
-    conn.close()
-
-    return result['username'] if result else None
-
+# ---------- PUZZLE SOLVES ----------
 
 def mark_puzzle_solved(user_id, puzzle_id, correct=True):
     if not correct:
@@ -55,170 +72,126 @@ def mark_puzzle_solved(user_id, puzzle_id, correct=True):
 
     PUZZLES, _ = safe_import_handlers()
 
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
-        SELECT 1 FROM solved_puzzles 
+    # Already solved?
+    existing = safe_query("""
+        SELECT 1 FROM solved_puzzles
         WHERE telegram_id = %s AND puzzle_id = %s
-    """, (user_id, puzzle_id))
-
-    if cur.fetchone():
-        cur.close()
-        conn.close()
+    """, (user_id, puzzle_id), fetchone=True)
+    
+    if existing:
         return
 
     puzzle = PUZZLES.get(puzzle_id, {})
-    points = puzzle.get('points', 10)
-    difficulty = puzzle.get('difficulty', 'Beginner')
+    points = puzzle.get("points", 10)
+    difficulty = puzzle.get("difficulty", "Beginner")
 
-    cur.execute("""
+    safe_query("""
         INSERT INTO solved_puzzles (telegram_id, puzzle_id)
         VALUES (%s, %s)
     """, (user_id, puzzle_id))
 
-    cur.execute("""
-        UPDATE users 
-        SET score = score + %s,
-            last_solve_time = CURRENT_TIMESTAMP
+    safe_query("""
+        UPDATE users SET score = score + %s, last_solve_time = CURRENT_TIMESTAMP
         WHERE telegram_id = %s
     """, (points, user_id))
 
-    cur.execute("""
+    safe_query("""
         INSERT INTO difficulty_scores (telegram_id, difficulty, score)
         VALUES (%s, %s, %s)
         ON CONFLICT (telegram_id, difficulty)
         DO UPDATE SET score = difficulty_scores.score + EXCLUDED.score
     """, (user_id, difficulty, points))
 
-    cur.execute("""
-        SELECT COUNT(*) as count FROM wrong_answers
+    wrong_count = safe_query("""
+        SELECT COUNT(*) AS c FROM wrong_answers
         WHERE telegram_id = %s AND puzzle_id = %s
-    """, (user_id, puzzle_id))
+    """, (user_id, puzzle_id), fetchone=True)
 
-    wrong_count = cur.fetchone()['count']
-    if wrong_count == 0:
-        cur.execute("""
+    if wrong_count and wrong_count.get("c") == 0:
+        safe_query("""
             INSERT INTO perfect_solves (telegram_id, puzzle_id)
             VALUES (%s, %s)
             ON CONFLICT DO NOTHING
         """, (user_id, puzzle_id))
 
-    conn.commit()
-    cur.close()
-    conn.close()
-
 
 def record_wrong_answer(user_id, puzzle_id, answer_text):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
+    safe_query("""
         INSERT INTO wrong_answers (telegram_id, puzzle_id, answer_text)
         VALUES (%s, %s, %s)
     """, (user_id, puzzle_id, answer_text))
 
-    conn.commit()
-    cur.close()
-    conn.close()
-
 
 def get_last_wrong(user_id, puzzle_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
+    row = safe_query("""
         SELECT answer_text FROM wrong_answers
         WHERE telegram_id = %s AND puzzle_id = %s
         ORDER BY attempt_time DESC
         LIMIT 1
-    """, (user_id, puzzle_id))
+    """, (user_id, puzzle_id), fetchone=True)
 
-    result = cur.fetchone()
+    return row['answer_text'] if row else None
 
-    cur.close()
-    conn.close()
 
-    return result['answer_text'] if result else None
-
+# ---------- PROGRESS ----------
 
 def get_user_progress(user_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("SELECT username, score FROM users WHERE telegram_id = %s", (user_id,))
-    user = cur.fetchone()
-
+    user = safe_query(
+        "SELECT username, score FROM users WHERE telegram_id = %s",
+        (user_id,), fetchone=True
+    )
     if not user:
-        cur.close()
-        conn.close()
         return [], 0, {}, None
 
-    cur.execute("SELECT puzzle_id FROM solved_puzzles WHERE telegram_id = %s", (user_id,))
-    solved = [row['puzzle_id'] for row in cur.fetchall()]
+    solved_rows = safe_query(
+        "SELECT puzzle_id FROM solved_puzzles WHERE telegram_id = %s",
+        (user_id,), fetchall=True
+    ) or []
+    solved = [r['puzzle_id'] for r in solved_rows]
 
-    cur.execute("SELECT difficulty, score FROM difficulty_scores WHERE telegram_id = %s", (user_id,))
-    diff_scores = {row['difficulty']: row['score'] for row in cur.fetchall()}
+    diff_rows = safe_query(
+        "SELECT difficulty, score FROM difficulty_scores WHERE telegram_id = %s",
+        (user_id,), fetchall=True
+    ) or []
 
-    cur.close()
-    conn.close()
+    diff_scores = {r['difficulty']: r['score'] for r in diff_rows}
 
-    return solved, user['score'], diff_scores, user['username']
+    return solved, user["score"], diff_scores, user["username"]
 
 
 def get_user_stage(user_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("SELECT stage FROM users WHERE telegram_id = %s", (user_id,))
-    result = cur.fetchone()
-
-    cur.close()
-    conn.close()
-
-    return result['stage'] if result else 1
+    row = safe_query(
+        "SELECT stage FROM users WHERE telegram_id = %s",
+        (user_id,), fetchone=True
+    )
+    return row["stage"] if row else 1
 
 
 def advance_user_stage(user_id):
     solved_count = len(get_user_progress(user_id)[0])
-    current_stage = get_user_stage(user_id)
+    current = get_user_stage(user_id)
 
-    new_stage = current_stage
-    if solved_count >= 7 and current_stage < 3:
+    new_stage = current
+    if solved_count >= 7 and current < 3:
         new_stage = 3
-    elif solved_count >= 3 and current_stage < 2:
+    elif solved_count >= 3 and current < 2:
         new_stage = 2
 
-    if new_stage > current_stage:
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            UPDATE users SET stage = %s WHERE telegram_id = %s
-        """, (new_stage, user_id))
-
-        conn.commit()
-        cur.close()
-        conn.close()
+    if new_stage != current:
+        safe_query(
+            "UPDATE users SET stage = %s WHERE telegram_id = %s",
+            (new_stage, user_id)
+        )
 
     return new_stage
 
 
 def is_puzzle_solved(user_id, puzzle_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
-        SELECT 1 FROM solved_puzzles 
+    row = safe_query("""
+        SELECT 1 FROM solved_puzzles
         WHERE telegram_id = %s AND puzzle_id = %s
-    """, (user_id, puzzle_id))
-
-    result = cur.fetchone()
-
-    cur.close()
-    conn.close()
-
-    return result is not None
+    """, (user_id, puzzle_id), fetchone=True)
+    return bool(row)
 
 
 def get_random_unsolved_puzzle(user_id, difficulty):
@@ -232,35 +205,22 @@ def get_random_unsolved_puzzle(user_id, difficulty):
     return random.choice(unsolved) if unsolved else None
 
 
-def record_award(user_id, award_key):
-    conn = get_connection()
-    cur = conn.cursor()
+# ---------- AWARDS ----------
 
-    cur.execute("""
+def record_award(user_id, award_key):
+    safe_query("""
         INSERT INTO user_awards (telegram_id, award_key)
         VALUES (%s, %s)
         ON CONFLICT DO NOTHING
     """, (user_id, award_key))
 
-    conn.commit()
-    cur.close()
-    conn.close()
-
 
 def get_user_awards(user_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
+    rows = safe_query("""
         SELECT award_key FROM user_awards WHERE telegram_id = %s
-    """, (user_id,))
+    """, (user_id,), fetchall=True)
 
-    awards = [row['award_key'] for row in cur.fetchall()]
-
-    cur.close()
-    conn.close()
-
-    return awards
+    return [r['award_key'] for r in (rows or [])]
 
 
 def is_award_earned(user_id, award_key):
@@ -268,124 +228,99 @@ def is_award_earned(user_id, award_key):
 
 
 def get_perfect_solve_count(user_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
-        SELECT COUNT(*) as count FROM perfect_solves WHERE telegram_id = %s
-    """, (user_id,))
-
-    result = cur.fetchone()
-
-    cur.close()
-    conn.close()
-
-    return result['count'] if result else 0
+    row = safe_query("""
+        SELECT COUNT(*) AS c FROM perfect_solves WHERE telegram_id = %s
+    """, (user_id,), fetchone=True)
+    return row["c"] if row else 0
 
 
 def add_bonus_points(user_id, points):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        UPDATE users SET score = score + %s WHERE telegram_id = %s
+    safe_query("""
+        UPDATE users SET score = score + %s
+        WHERE telegram_id = %s
     """, (points, user_id))
 
-    conn.commit()
-    cur.close()
-    conn.close()
 
+# ---------- ADMIN ----------
 
-def get_session_stats(user_id):
-    return {"count": 0, "duration": 0}
+# ---------- ADMIN USER LOOKUP ----------
+
+def get_user_data(user_id=None):
+    # Return a single user
+    if user_id:
+        return safe_query(
+            "SELECT * FROM users WHERE telegram_id = %s",
+            (user_id,),
+            fetchone=True
+        )
+
+    # Return ALL users as {telegram_id: user_data}
+    rows = safe_query(
+        "SELECT * FROM users",
+        fetchall=True
+    ) or []
+
+    return {row["telegram_id"]: row for row in rows}
 
 
 def get_stats():
-    """Aggregate stats for admin."""
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("SELECT COUNT(*) AS total_users FROM users")
-    total_users = cur.fetchone()['total_users']
-
-    cur.execute("SELECT COUNT(*) AS total_solves FROM solved_puzzles")
-    total_solves = cur.fetchone()['total_solves']
-
-    cur.execute("""
-        SELECT puzzle_id, COUNT(*) AS c 
-        FROM solved_puzzles 
-        GROUP BY puzzle_id 
-        ORDER BY c DESC 
-        LIMIT 1
-    """)
-    row = cur.fetchone()
-
-    most_solved_puzzle = row['puzzle_id'] if row else None
-    most_solved_count = row['c'] if row else 0
-
-    cur.close()
-    conn.close()
+    users = safe_query("SELECT COUNT(*) AS c FROM users", fetchone=True)
+    solves = safe_query("SELECT COUNT(*) AS c FROM solved_puzzles", fetchone=True)
+    top = safe_query("""
+        SELECT puzzle_id, COUNT(*) AS c FROM solved_puzzles
+        GROUP BY puzzle_id ORDER BY c DESC LIMIT 1
+    """, fetchone=True)
 
     return {
-        "total_users": total_users,
-        "total_solves": total_solves,
-        "most_solved_puzzle": most_solved_puzzle,
-        "most_solved_count": most_solved_count,
+        "total_users": users["c"] if users else 0,
+        "total_solves": solves["c"] if solves else 0,
+        "most_solved_puzzle": top["puzzle_id"] if top else None,
+        "most_solved_count": top["c"] if top else 0,
     }
 
 
-def get_user_data(user_id=None):
-    """
-    If user_id supplied → return single user.
-    If none → return all users (dict).
-    """
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    if user_id:
-        cur.execute("SELECT * FROM users WHERE telegram_id = %s", (user_id,))
-        user = cur.fetchone()
-        cur.close()
-        conn.close()
-        return user
-
-    cur.execute("SELECT * FROM users")
-    users = {row['telegram_id']: row for row in cur.fetchall()}
-
-    cur.close()
-    conn.close()
-
-    return users
-
-
-# ================= Admin function required by handlers =================
 def get_leaderboard(top_n=10, difficulty=None):
-    """Return top users by total score or difficulty score."""
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
     if difficulty:
-        cur.execute("""
+        rows = safe_query("""
             SELECT u.username, ds.score
             FROM users u
             JOIN difficulty_scores ds ON u.telegram_id = ds.telegram_id
             WHERE ds.difficulty = %s
             ORDER BY ds.score DESC
             LIMIT %s
-        """, (difficulty, top_n))
+        """, (difficulty, top_n), fetchall=True)
     else:
-        cur.execute("""
-            SELECT username, score
-            FROM users
+        rows = safe_query("""
+            SELECT username, score FROM users
             ORDER BY score DESC
             LIMIT %s
-        """, (top_n,))
+        """, (top_n,), fetchall=True)
 
-    results = [(row['username'], row['score']) for row in cur.fetchall()]
+    return [(r["username"], r["score"]) for r in (rows or [])]
 
-    cur.close()
-    conn.close()
+def get_session_stats(user_id):
+    solved = safe_query("""
+        SELECT COUNT(*) AS c FROM solved_puzzles
+        WHERE telegram_id = %s
+    """, (user_id,), fetchone=True)
 
-    return results
+    wrong = safe_query("""
+        SELECT COUNT(*) AS c FROM wrong_answers
+        WHERE telegram_id = %s
+    """, (user_id,), fetchone=True)
+
+    total = (solved["c"] if solved else 0) + (wrong["c"] if wrong else 0)
+
+    accuracy = 0
+    if total > 0:
+        accuracy = round((solved["c"] / total) * 100, 2)
+
+    return {
+        "solved": solved["c"] if solved else 0,
+        "wrong": wrong["c"] if wrong else 0,
+        "accuracy": accuracy,
+    }
+
+
 
 

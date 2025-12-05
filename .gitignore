@@ -7,3 +7,5 @@ bot.log
 backups/
 nohup.out
 *.json
+migrate_data.py
+check_user.py

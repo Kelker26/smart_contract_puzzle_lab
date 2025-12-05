@@ -38,6 +38,74 @@ logging.basicConfig(level=logging.INFO)
 # Temporary in-memory set for users who must provide username
 USER_NAME_PENDING = set()
 
+# ==================== CATEGORY SYSTEM ====================
+
+CATEGORIES = {
+    "security_basics": {
+        "name": "🔐 Security Basics",
+        "description": "Core smart contract vulnerabilities",
+        "icon": "🔐",
+        "order": 1,
+        "sponsor": None,
+    },
+    "defi_exploits": {
+        "name": "💸 DeFi Exploits",
+        "description": "Real-world DeFi attacks",
+        "icon": "💸",
+        "order": 2,
+        "sponsor": None,
+    },
+    "yearn_exploits": {
+        "name": "🏦 Yearn Finance",
+        "description": "Learn from $9M exploit (Nov 2025)",
+        "icon": "🏦",
+        "order": 3,
+        "sponsor": "Yearn Finance",
+    },
+    "ethernaut": {
+        "name": "🎮 Ethernaut CTF",
+        "description": "Challenge-style puzzles",
+        "icon": "🎮",
+        "order": 4,
+        "sponsor": None,
+    },
+    "general": {
+        "name": "📚 General",
+        "description": "Mixed difficulty puzzles",
+        "icon": "📚",
+        "order": 5,
+        "sponsor": None,
+    },
+}
+
+def get_puzzle_category(puzzle_id):
+    """Auto-categorize existing puzzles based on ID patterns."""
+    pid_lower = puzzle_id.lower()
+    
+    # Check for explicit ethernaut
+    if pid_lower.startswith("ethernaut"):
+        return "ethernaut"
+    
+    # Check question content for keywords
+    if puzzle_id in PUZZLES:
+        question = PUZZLES[puzzle_id].get("question", "").lower()
+        
+        # Yearn puzzles
+        if "yearn" in pid_lower or "yearn" in question:
+            return "yearn_exploits"
+        
+        # Security patterns
+        if any(word in question for word in ["reentrancy", "delegatecall", "tx.origin", "selfdestruct", "private", "signature"]):
+            return "security_basics"
+        
+        # DeFi patterns
+        if any(word in question for word in ["flash loan", "oracle", "liquidity", "dex", "amm"]):
+            return "defi_exploits"
+    
+    # Default to general
+    return "general"
+
+
 # Enhanced puzzle bank with multiple puzzles per difficulty
 PUZZLES = {
     # ==================== BEGINNER ====================
@@ -841,6 +909,191 @@ PUZZLES = {
         "points": 40,
         "stage_required": 3,
     },
+
+    # ==================== YEARN FINANCE EXPLOITS ====================
+    "yearn_yeth_mint_2025": {
+        "question": (
+            "🏦 *Yearn — yETH Mint Exploit (Nov 2025)*\n\n"
+            "```solidity\n"
+            "contract LegacyYETH {\n"
+            "    // Outdated rate-checking logic\n"
+            "    function mint(uint amount) public {\n"
+            "        // Legacy invariant checks bypassed\n"
+            "        _mint(msg.sender, amount);\n"
+            "    }\n"
+            "}\n"
+            "```\n"
+            "❓ *Question:* Can legacy contracts with outdated invariants enable unlimited minting? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 Real $9M exploit! Yearn's yETH exploit (Nov 2025) showed how outdated invariant checks allowed minting 235 TRILLION yETH tokens in one transaction. Attacker used legacy contracts still connected to active liquidity pools. Always: 1) Sunset legacy code 2) Update ALL invariant checks 3) Add mint caps 4) Isolate deprecated contracts.",
+        "difficulty": "Advanced",
+        "points": 40,
+        "stage_required": 3,
+    },
+    
+    "yearn_pool_drainage": {
+        "question": (
+            "🏦 *Yearn — Multi-Pool Drainage*\n\n"
+            "After minting 235T yETH tokens, attacker:\n"
+            "1. Swapped yETH → stETH on Balancer\n"
+            "2. Swapped yETH → rETH on Curve\n"
+            "3. Drained $9M across multiple pools\n\n"
+            "❓ *Question:* Can unlimited minting drain ALL connected liquidity pools? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 Real attack! Once minting is compromised, ALL integrated protocols are at risk. Attacker swapped worthless minted tokens for real assets across multiple DEXs. Defense: 1) Strict mint controls 2) Supply caps 3) Circuit breakers 4) Pool liquidity limits 5) Cross-protocol monitoring.",
+        "difficulty": "Advanced",
+        "points": 40,
+        "stage_required": 3,
+    },
+    
+    "yearn_legacy_isolation": {
+        "question": (
+            "🏦 *Yearn — Legacy Contract Isolation*\n\n"
+            "```solidity\n"
+            "contract YearnV3 { /* secure */ }\n"
+            "contract LegacyYETH { /* vulnerable but still active */ }\n\n"
+            "// Legacy can still interact with pools!\n"
+            "```\n"
+            "❓ *Question:* Should deprecated contracts be completely isolated from active systems? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 $9M lesson learned! While Yearn V2/V3 were secure, legacy yETH wasn't fully isolated and could still interact with live pools. Proper deprecation requires: 1) Complete permission revocation 2) Liquidity separation 3) Contract pausing 4) Clear migration deadlines 5) No partial sunsets.",
+        "difficulty": "Advanced",
+        "points": 35,
+        "stage_required": 3,
+    },
+    
+    "yearn_strategy_risk": {
+        "question": (
+            "🏦 *Yearn — Strategy Upgrade Risk*\n\n"
+            "```solidity\n"
+            "contract Vault {\n"
+            "    address public strategy;\n"
+            "    \n"
+            "    function earn() public {\n"
+            "        token.transfer(strategy, balance);\n"
+            "        IStrategy(strategy).deposit();\n"
+            "    }\n"
+            "}\n"
+            "```\n"
+            "❓ *Question:* If governance can instantly change 'strategy', can funds be drained? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 Governance attack! If governance points 'strategy' to malicious contract, all funds can be stolen. Similar to $11M Yearn yDAI exploit. Protections: 1) Timelock delays (24-48hr) 2) Multisig + oversight 3) Strategy whitelisting 4) Emergency pause 5) Gradual migration.",
+        "difficulty": "Advanced",
+        "points": 35,
+        "stage_required": 3,
+    },
+    
+    "yearn_price_manipulation": {
+        "question": (
+            "🏦 *Yearn — Price-Per-Share Attack*\n\n"
+            "```solidity\n"
+            "contract Vault {\n"
+            "    function pricePerShare() public view returns (uint) {\n"
+            "        return totalAssets() / totalSupply();\n"
+            "    }\n"
+            "}\n"
+            "```\n"
+            "❓ *Question:* Can attacker donate tokens to inflate pricePerShare? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 Donation attack! Attacker donates assets directly, inflating totalAssets while totalSupply stays same. Then deposits small amount, gets inflated shares, withdraws profit. Yearn mitigates with: deposit limits, PPS bounds, virtual shares.",
+        "difficulty": "Advanced",
+        "points": 35,
+        "stage_required": 3,
+    },
+    
+    "yearn_first_depositor": {
+        "question": (
+            "🏦 *Yearn — First Depositor Attack*\n\n"
+            "Attacker's strategy:\n"
+            "1. Deposits 1 wei → gets 1 share\n"
+            "2. Donates 1000 ETH directly\n"
+            "3. PPS becomes 1000 ETH per share\n"
+            "4. Next depositor needs >1000 ETH or gets 0 shares\n\n"
+            "❓ *Question:* Can first depositor manipulate share price? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 First depositor exploit! Fix: Mint dead shares to address(0) on first deposit (Uniswap V2 pattern). This prevents share price manipulation through rounding. Critical for vault security!",
+        "difficulty": "Advanced",
+        "points": 35,
+        "stage_required": 3,
+    },
+    
+    "yearn_debt_ratio": {
+        "question": (
+            "🏦 *Yearn — Unbounded Debt Ratio*\n\n"
+            "```solidity\n"
+            "contract Vault {\n"
+            "    function updateDebt(address strategy, uint amount) public onlyGov {\n"
+            "        strategyDebt[strategy] += amount;\n"
+            "        token.transfer(strategy, amount);\n"
+            "    }\n"
+            "}\n"
+            "```\n"
+            "❓ *Question:* Without max debt limits, can strategy drain vault? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 Without debt caps, compromised governance can drain vault. Yearn uses: 1) Per-strategy debt limits (50% max) 2) Total debt ceiling 3) Performance checks 4) Community review 5) Emergency pause.",
+        "difficulty": "Intermediate",
+        "points": 30,
+        "stage_required": 2,
+    },
+    
+    "yearn_recovery": {
+        "question": (
+            "🏦 *Yearn — Post-Exploit Recovery*\n\n"
+            "After $9M yETH exploit:\n"
+            "- $3M laundered via Tornado Cash\n"
+            "- $2.4M recovered via protocol coordination\n"
+            "- Attacker self-destructed helper contracts\n\n"
+            "❓ *Question:* Can DeFi protocols recover stolen funds? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "✅ Partial recovery possible! Yearn recovered 26% through: 1) Coordination with Plume/Dinero 2) Freezing funds in contracts 3) Whitehat negotiations 4) Legal action. Always have: incident response plans, protocol partnerships, monitoring systems.",
+        "difficulty": "Intermediate",
+        "points": 25,
+        "stage_required": 2,
+    },
+    
+    "yearn_invariant_checks": {
+        "question": (
+            "🏦 *Yearn — Invariant Validation*\n\n"
+            "```solidity\n"
+            "contract Vault {\n"
+            "    function deposit(uint amount) public {\n"
+            "        // Missing: assert(totalSupply <= MAX_SUPPLY)\n"
+            "        _mint(msg.sender, shares);\n"
+            "    }\n"
+            "}\n"
+            "```\n"
+            "❓ *Question:* Should vaults have max supply invariants? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 Learned from yETH! Lack of supply invariants allowed unlimited minting. Always validate: 1) Max total supply 2) Max per-user balance 3) Min/max deposit amounts 4) Rate limits 5) Sanity checks on all state changes.",
+        "difficulty": "Advanced",
+        "points": 35,
+        "stage_required": 3,
+    },
+    
+    "yearn_circuit_breakers": {
+        "question": (
+            "🏦 *Yearn — Emergency Mechanisms*\n\n"
+            "After detecting unusual activity:\n"
+            "- 235T tokens minted (vs normal 100K)\n"
+            "- Multiple pools being drained\n"
+            "- No automatic pause triggered\n\n"
+            "❓ *Question:* Should protocols have automatic circuit breakers? (yes/no)"
+        ),
+        "answer": "yes",
+        "explanation": "🚨 Circuit breakers could have limited damage! Implement: 1) Unusual activity detection 2) Automatic pause on anomalies 3) Rate limiting 4) Multi-sig emergency pause 5) Monitoring systems. Fast response saves millions!",
+        "difficulty": "Intermediate",
+        "points": 30,
+        "stage_required": 2,
+    },
 }
 
 # Organize puzzles by difficulty for random selection
@@ -1097,6 +1350,19 @@ def register_handlers(application):
     application.add_handler(CommandHandler("dumpdata", cmd_dump))
     application.add_handler(CommandHandler("userstats", cmd_user))
 
+    # Category handlers
+    application.add_handler(CallbackQueryHandler(browse_categories_callback, pattern="^browse_categories$"))
+    logger.info("Registered browse_categories handler")
+    
+    application.add_handler(CallbackQueryHandler(category_view_callback, pattern="^category_"))
+    logger.info("Registered category_view handler")
+    
+    application.add_handler(CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$"))
+    logger.info("Registered back_to_menu handler")
+    
+    # Ignore handler for separator buttons
+    application.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer(), pattern="^ignore$"))
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Welcome user and ask for username if missing."""
@@ -1116,7 +1382,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_menu_message(update_or_ctx, context: ContextTypes.DEFAULT_TYPE = None):
-    """Send the main menu with stage-based access."""
+    """Send the main menu with stage-based access AND categories."""
     if isinstance(update_or_ctx, Update):
         update = update_or_ctx
     else:
@@ -1126,20 +1392,26 @@ async def show_menu_message(update_or_ctx, context: ContextTypes.DEFAULT_TYPE = 
     stage = get_user_stage(user_id)
     solved_count = len(get_user_progress(user_id)[0])
     
-    # Build keyboard based on unlocked stages
+    # Build keyboard with CATEGORIES at top
     keyboard = []
+    
+    # NEW: Category browser (highlighted)
+    keyboard.append([InlineKeyboardButton("📚 Browse by Category", callback_data="browse_categories")])
+    
+    # Separator
+    keyboard.append([InlineKeyboardButton("━━━ By Difficulty ━━━", callback_data="ignore")])
     
     # Stage 1: Beginner (always unlocked)
     keyboard.append([InlineKeyboardButton("🟢 Beginner (Stage 1)", callback_data="difficulty_beginner")])
     
-    # Stage 2: Intermediate (unlock after 2 puzzles)
+    # Stage 2: Intermediate
     if stage >= 2:
         keyboard.append([InlineKeyboardButton("🟡 Intermediate (Stage 2)", callback_data="difficulty_intermediate")])
     else:
         needed = STAGE_REQUIREMENTS[2] - solved_count
         keyboard.append([InlineKeyboardButton(f"🔒 Intermediate (Solve {needed} more)", callback_data="locked_2")])
     
-    # Stage 3: Advanced (unlock after 4 puzzles)
+    # Stage 3: Advanced
     if stage >= 3:
         keyboard.append([InlineKeyboardButton("🔴 Advanced (Stage 3)", callback_data="difficulty_advanced")])
     else:
@@ -1169,6 +1441,101 @@ async def show_menu_message(update_or_ctx, context: ContextTypes.DEFAULT_TYPE = 
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
+
+async def browse_categories_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show category browser."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    
+    # Build category buttons
+    keyboard = []
+    for cat_key, cat_info in sorted(CATEGORIES.items(), key=lambda x: x[1]["order"]):
+        # Count puzzles in category
+        cat_puzzles = [p_id for p_id in PUZZLES.keys() if get_puzzle_category(p_id) == cat_key]
+        count = len(cat_puzzles)
+        
+        if count > 0:  # Only show categories with puzzles
+            button_text = f"{cat_info['icon']} {cat_info['name']} ({count})"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"category_{cat_key}")])
+    
+    keyboard.append([InlineKeyboardButton("⬅️ Back to Menu", callback_data="back_to_menu")])
+    
+    text = (
+        "📚 *Browse by Category*\n\n"
+        "Explore puzzles organized by topic.\n"
+        "Perfect for focused learning! 🎯"
+    )
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+
+async def category_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show puzzles in a specific category."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    cat_key = query.data.replace("category_", "")
+    cat_info = CATEGORIES.get(cat_key, {})
+    
+    # Get puzzles in this category
+    category_puzzles = [p_id for p_id in PUZZLES.keys() if get_puzzle_category(p_id) == cat_key]
+    
+    if not category_puzzles:
+        await query.answer("No puzzles in this category yet!", show_alert=True)
+        return
+    
+    # Build puzzle list
+    keyboard = []
+    for puzzle_id in category_puzzles:
+        puzzle = PUZZLES[puzzle_id]
+        solved = is_puzzle_solved(user_id, puzzle_id)
+        emoji = "✅" if solved else "❓"
+        
+        # Extract puzzle name from question
+        question = puzzle["question"]
+        if "—" in question:
+            name = question.split("—")[1].split("*")[0].strip()
+        else:
+            name = f"{puzzle['difficulty']} Puzzle"
+        
+        # Truncate long names
+        if len(name) > 30:
+            name = name[:27] + "..."
+        
+        keyboard.append([InlineKeyboardButton(f"{emoji} {name}", callback_data=f"start_{puzzle_id}")])
+    
+    keyboard.append([InlineKeyboardButton("⬅️ Back to Categories", callback_data="browse_categories")])
+    
+    # Category header
+    sponsor_text = f"\n\n*Sponsored by {cat_info['sponsor']}*" if cat_info.get('sponsor') else ""
+    
+    text = (
+        f"{cat_info['icon']} *{cat_info['name']}*\n\n"
+        f"{cat_info['description']}\n"
+        f"Puzzles: {len(category_puzzles)}"
+        f"{sponsor_text}\n\n"
+        f"Select a puzzle:"
+    )
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+
+async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Return to main menu."""
+    query = update.callback_query
+    await query.answer()
+    await show_menu_message(update, context)
 
 
 async def receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
